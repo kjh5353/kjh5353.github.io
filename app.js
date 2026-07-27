@@ -56,14 +56,14 @@ function _triggerAlarm() {
   _timerSeconds = 0;
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   _syncTimerDOM();
-  // 진동 3번 (각 400ms, 간격 200ms)
+  // 진동 5번 (각 400ms, 간격 200ms)
   try {
-    if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
+    if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400, 200, 400, 200, 400]);
   } catch(e) {}
-  // 비프음 3초 (1초 간격 3회)
+  // 비프음 5회 (1초 간격)
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    [0, 1, 2].forEach(i => {
+    [0, 1, 2, 3, 4].forEach(i => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
@@ -73,7 +73,7 @@ function _triggerAlarm() {
       osc.start(ctx.currentTime + i);
       osc.stop(ctx.currentTime + i + 0.5);
     });
-    setTimeout(() => { try { ctx.close(); } catch(e){} }, 3500);
+    setTimeout(() => { try { ctx.close(); } catch(e){} }, 5500);
   } catch(e) {}
   // 잠금화면 알림 (권한 있을 때)
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
