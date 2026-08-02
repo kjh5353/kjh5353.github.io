@@ -35,7 +35,7 @@ let _timerSeconds  = REST_DURATION; // 현재 표시용 남은 초
 let _audioCtx      = null;    // iOS: 유저 제스처 시점에 미리 unlock
 let _countdownBeepedAt = new Set(); // 카운트다운 비프 중복 방지
 
-// 사용자 설정 휠 시간 (관저 저장, 기본값 REST_DURATION)
+// 사용자 설정 휴식 시간 (localStorage 저장, 기본값 REST_DURATION)
 function _getCustomDuration() {
   try {
     const saved = parseInt(localStorage.getItem('_timerDuration'));
@@ -44,6 +44,33 @@ function _getCustomDuration() {
 }
 function _setCustomDuration(sec) {
   try { localStorage.setItem('_timerDuration', String(sec)); } catch(e) {}
+}
+
+// DOM 입력창에서 직접 읽기 (change 이벤트 미발동 대비)
+function _readDurationFromDOM() {
+  const minEl = document.getElementById('timerDurMin');
+  const secEl = document.getElementById('timerDurSec');
+  if (minEl && secEl) {
+    const m = Math.max(0, parseInt(minEl.value) || 0);
+    const s = Math.max(0, Math.min(59, parseInt(secEl.value) || 0));
+    const total = m * 60 + s;
+    if (total > 0) { _setCustomDuration(total); return total; }
+  }
+  return _getCustomDuration();
+}
+
+// Screen Wake Lock — 타이머 실행 중 화면 꺼짐 방지 (iOS 16.4+ PWA 지원)
+let _wakeLock = null;
+async function _requestWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      _wakeLock = await navigator.wakeLock.request('screen');
+      _wakeLock.addEventListener('release', () => { _wakeLock = null; });
+    }
+  } catch(e) { _wakeLock = null; }
+}
+function _releaseWakeLock() {
+  try { if (_wakeLock) { _wakeLock.release(); _wakeLock = null; } } catch(e) {}
 }
 
 // iOS Audio 정책: 유저 터치 시점에 AudioContext를 생성·resume해 두어야
@@ -84,6 +111,7 @@ function _triggerAlarm() {
   _timerState = 'alarm';
   _timerSeconds = 0;
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+  _releaseWakeLock(); // 알람 시 화면 잠금 해제 허용
   _syncTimerDOM();
   // 진동 5번 (각 400ms, 간격 200ms) — Android만 지원
   try {
@@ -115,19 +143,26 @@ function startRestTimer() {
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   // ★ iOS 핵심: 유저 터치 이벤트 안에서 AudioContext 미리 unlock
   _unlockAudio();
-  const dur = _getCustomDuration();
+  // DOM 입력창에서 직접 읽어서 change 이벤트 미발동 문제 방지
+  const dur = _readDurationFromDOM();
   _timerStartAt = Date.now();
   _timerState   = 'active';
   _timerSeconds = dur;
   _countdownBeepedAt.clear();
-  // 시작 시각을 localStorage에 저장 → 화면 꺼진 후 복원용
-  try { localStorage.setItem('_restStartAt', String(_timerStartAt)); } catch(e){}
+  // 시작 시각 + 이 세션의 duration을 localStorage에 저장 (화면 꺼짐 복원용)
+  try {
+    localStorage.setItem('_restStartAt', String(_timerStartAt));
+    localStorage.setItem('_restDurSnapshot', String(dur));
+  } catch(e) {}
   _syncTimerDOM();
 
   // 알림 권한 요청 (최초 1회)
   if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
     Notification.requestPermission();
   }
+
+  // 화면 꺼짐 방지 (Screen Wake Lock — iOS 16.4+ PWA 지원)
+  _requestWakeLock();
 
   // 타이머 카드로 자동 스크롤
   const card = document.getElementById('restTimerCard');
@@ -150,7 +185,8 @@ function resetRestTimer() {
   _timerSeconds = _getCustomDuration();
   _timerState   = 'idle';
   _countdownBeepedAt.clear();
-  try { localStorage.removeItem('_restStartAt'); } catch(e){}
+  _releaseWakeLock(); // 리셋 시 Wake Lock 해제
+  try { localStorage.removeItem('_restStartAt'); localStorage.removeItem('_restDurSnapshot'); } catch(e){}
   _syncTimerDOM();
 }
 
@@ -171,11 +207,15 @@ function resetRestTimer() {
   try { if (navigator.vibrate) navigator.vibrate(120); } catch(e) {}
 }
 
-// 화면이 다시 켜질 때(visibilitychange) → 경과 시간 재계산
+// 화면이 다시 켜질 때(visibilitychange) → 경과 시간 재계산 + Wake Lock 재요청
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (_timerState !== 'active') return;
-  const dur = _getCustomDuration();
+  // Wake Lock은 화면 꺼지면 자동 해제되므로 다시 켜질 때 재요청
+  if (!_wakeLock) _requestWakeLock();
+  const dur = (() => {
+    try { const s = parseInt(localStorage.getItem('_restDurSnapshot')); return (s > 0) ? s : _getCustomDuration(); } catch(e) { return _getCustomDuration(); }
+  })();
   const elapsed = (Date.now() - _timerStartAt) / 1000;
   _timerSeconds = Math.max(0, dur - elapsed);
   if (_timerSeconds <= 0) {
@@ -189,14 +229,13 @@ document.addEventListener('visibilitychange', () => {
 try {
   const saved = localStorage.getItem('_restStartAt');
   if (saved) {
-    const dur     = _getCustomDuration();
+    const dur     = (() => { try { const s = parseInt(localStorage.getItem('_restDurSnapshot')); return (s > 0) ? s : _getCustomDuration(); } catch(e) { return _getCustomDuration(); } })();
     const elapsed = (Date.now() - Number(saved)) / 1000;
     if (elapsed < dur) {
       _timerStartAt = Number(saved);
       _timerState   = 'active';
       _timerSeconds = Math.max(0, dur - elapsed);
       _countdownBeepedAt.clear();
-      // interval 재개 (DOM은 renderWorkout 후 _syncTimerDOM으로 갱신)
       _timerInterval = setInterval(() => {
         const el  = (Date.now() - _timerStartAt) / 1000;
         _timerSeconds = Math.max(0, dur - el);
@@ -209,6 +248,7 @@ try {
       }, 250);
     } else {
       localStorage.removeItem('_restStartAt');
+      localStorage.removeItem('_restDurSnapshot');
     }
   }
 } catch(e) {}
