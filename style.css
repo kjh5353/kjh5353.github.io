@@ -1616,7 +1616,7 @@ body {
   gap: 4px;
 }
 .timer-dur-input {
-  width: clamp(42px, 4.5vw, 56px);
+  width: clamp(52px, 5.5vw, 72px);
   padding: 3px 6px;
   background: rgba(255,255,255,0.06);
   border: 1px solid rgba(255,255,255,0.15);

@@ -48,13 +48,11 @@ function _setCustomDuration(sec) {
 
 // DOM 입력창에서 직접 읽기 (change 이벤트 미발동 대비)
 function _readDurationFromDOM() {
-  const minEl = document.getElementById('timerDurMin');
-  const secEl = document.getElementById('timerDurSec');
-  if (minEl && secEl) {
-    const m = Math.max(0, parseInt(minEl.value) || 0);
-    const s = Math.max(0, Math.min(59, parseInt(secEl.value) || 0));
-    const total = m * 60 + s;
-    if (total > 0) { _setCustomDuration(total); return total; }
+  const el = document.getElementById('timerDurSec');
+  if (el) {
+    const v = Math.max(10, parseInt(el.value) || 0);
+    _setCustomDuration(v);
+    return v;
   }
   return _getCustomDuration();
 }
@@ -821,8 +819,6 @@ function renderWorkout(workoutData) {
 
   // ── 휴식 타이머 카드 ──
   const dur0 = _getCustomDuration();
-  const durM  = Math.floor(dur0 / 60);
-  const durS  = dur0 % 60;
   const timerCard = document.createElement('div');
   timerCard.id = 'restTimerCard';
   timerCard.className = 'rest-timer-card' + (_timerState === 'idle' ? '' : ` ${_timerState}`);
@@ -839,29 +835,22 @@ function renderWorkout(workoutData) {
       <div class="timer-set-row">
         <label class="timer-set-label">휴식 시간</label>
         <div class="timer-set-inputs">
-          <input class="timer-dur-input" id="timerDurMin" type="number"
-                 min="0" max="59" value="${durM}" inputmode="numeric" placeholder="분">
-          <span class="timer-dur-sep">분</span>
           <input class="timer-dur-input" id="timerDurSec" type="number"
-                 min="0" max="59" value="${durS}" inputmode="numeric" placeholder="초">
+                 min="10" max="600" value="${dur0}" inputmode="numeric" placeholder="120">
           <span class="timer-dur-sep">초</span>
         </div>
       </div>
     </div>
     <button class="timer-btn" id="timerResetBtn" title="리셋">↺</button>`;
 
-  // 분/초 입력 시 커스텀 시간 저장
+  // 초 입력 시 커스텀 시간 저장 + idle 상태에서 표시 갱신
   function _onDurChange() {
-    const m = Math.max(0, parseInt(timerCard.querySelector('#timerDurMin').value) || 0);
-    const s = Math.max(0, Math.min(59, parseInt(timerCard.querySelector('#timerDurSec').value) || 0));
-    const total = m * 60 + s;
-    if (total > 0) {
-      _setCustomDuration(total);
-      if (_timerState === 'idle') { _timerSeconds = total; _syncTimerDOM(); }
-    }
+    const v = Math.max(10, parseInt(timerCard.querySelector('#timerDurSec').value) || 120);
+    _setCustomDuration(v);
+    if (_timerState === 'idle') { _timerSeconds = v; _syncTimerDOM(); }
   }
-  timerCard.querySelector('#timerDurMin').addEventListener('change', _onDurChange);
   timerCard.querySelector('#timerDurSec').addEventListener('change', _onDurChange);
+  timerCard.querySelector('#timerDurSec').addEventListener('input',  _onDurChange);
 
   timerCard.addEventListener('click', () => {
     if (_timerState === 'alarm') resetRestTimer();
