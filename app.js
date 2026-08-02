@@ -35,26 +35,19 @@ let _timerSeconds  = REST_DURATION; // 현재 표시용 남은 초
 let _audioCtx      = null;    // iOS: 유저 제스처 시점에 미리 unlock
 let _countdownBeepedAt = new Set(); // 카운트다운 비프 중복 방지
 
-// 사용자 설정 휴식 시간 (localStorage 저장, 기본값 REST_DURATION)
-function _getCustomDuration() {
+// 사용자 설정 휴식 시간 — 모듈 레벨 변수로 유지 (DOM 의존 없음)
+// 렌더링시 재조회, 입력 시 즉시 반영
+let _currentDuration = (() => {
   try {
     const saved = parseInt(localStorage.getItem('_timerDuration'));
     return (saved && saved > 0) ? saved : REST_DURATION;
   } catch(e) { return REST_DURATION; }
-}
-function _setCustomDuration(sec) {
-  try { localStorage.setItem('_timerDuration', String(sec)); } catch(e) {}
-}
+})();
 
-// DOM 입력창에서 직접 읽기 (change 이벤트 미발동 대비)
-function _readDurationFromDOM() {
-  const el = document.getElementById('timerDurSec');
-  if (el) {
-    const v = Math.max(10, parseInt(el.value) || 0);
-    _setCustomDuration(v);
-    return v;
-  }
-  return _getCustomDuration();
+function _getCustomDuration() { return _currentDuration; }
+function _setCustomDuration(sec) {
+  _currentDuration = sec;
+  try { localStorage.setItem('_timerDuration', String(sec)); } catch(e) {}
 }
 
 // Screen Wake Lock — 타이머 실행 중 화면 꺼짐 방지 (iOS 16.4+ PWA 지원)
@@ -141,8 +134,8 @@ function startRestTimer() {
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   // ★ iOS 핵심: 유저 터치 이벤트 안에서 AudioContext 미리 unlock
   _unlockAudio();
-  // DOM 입력창에서 직접 읽어서 change 이벤트 미발동 문제 방지
-  const dur = _readDurationFromDOM();
+  // DOM 조회 없이 모듈 변수에서 직접 읽기 — 타이밍 문제 없음
+  const dur = _currentDuration;
   _timerStartAt = Date.now();
   _timerState   = 'active';
   _timerSeconds = dur;
@@ -843,14 +836,14 @@ function renderWorkout(workoutData) {
     </div>
     <button class="timer-btn" id="timerResetBtn" title="리셋">↺</button>`;
 
-  // 초 입력 시 커스텀 시간 저장 + idle 상태에서 표시 갱신
+  // 초 입력 시 모듈 변수 즉시 반영 (커스텀 저장 + idle 표시 갱신)
   function _onDurChange() {
-    const v = Math.max(10, parseInt(timerCard.querySelector('#timerDurSec').value) || 120);
-    _setCustomDuration(v);
+    const v = Math.max(10, parseInt(timerCard.querySelector('#timerDurSec').value) || REST_DURATION);
+    _setCustomDuration(v);           // ← _currentDuration + localStorage 동시 업데이트
     if (_timerState === 'idle') { _timerSeconds = v; _syncTimerDOM(); }
   }
-  timerCard.querySelector('#timerDurSec').addEventListener('change', _onDurChange);
   timerCard.querySelector('#timerDurSec').addEventListener('input',  _onDurChange);
+  timerCard.querySelector('#timerDurSec').addEventListener('change', _onDurChange);
 
   timerCard.addEventListener('click', () => {
     if (_timerState === 'alarm') resetRestTimer();
