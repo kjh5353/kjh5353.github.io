@@ -1597,6 +1597,54 @@ body {
 .rest-timer-card.active .timer-btn { border-color: var(--cancel); color: var(--cancel); }
 .rest-timer-card.alarm .timer-btn { border-color: var(--cancel); color: var(--cancel); background: rgba(248,113,113,0.15); }
 
+/* 타이머 휴식 시간 직접 입력 */
+.timer-set-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.timer-set-label {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.timer-set-inputs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.timer-dur-input {
+  width: clamp(42px, 4.5vw, 56px);
+  padding: 3px 6px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+.timer-dur-input::-webkit-inner-spin-button,
+.timer-dur-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+.timer-dur-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: rgba(108,142,255,0.1);
+}
+.rest-timer-card.active .timer-dur-input,
+.rest-timer-card.alarm  .timer-dur-input {
+  pointer-events: none;
+  opacity: 0.45;
+}
+.timer-dur-sep {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+
 /* Exercise rows — redesigned with set checkboxes */
 .workout-exercise-label {
   font-size: var(--fs-xs);

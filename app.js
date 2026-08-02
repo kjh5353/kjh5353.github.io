@@ -32,6 +32,35 @@ let _timerInterval = null;
 let _timerState    = 'idle';  // 'idle' | 'active' | 'alarm'
 let _timerStartAt  = 0;       // Date.now() 기준 시작 시각
 let _timerSeconds  = REST_DURATION; // 현재 표시용 남은 초
+let _audioCtx      = null;    // iOS: 유저 제스처 시점에 미리 unlock
+let _countdownBeepedAt = new Set(); // 카운트다운 비프 중복 방지
+
+// 사용자 설정 휠 시간 (관저 저장, 기본값 REST_DURATION)
+function _getCustomDuration() {
+  try {
+    const saved = parseInt(localStorage.getItem('_timerDuration'));
+    return (saved && saved > 0) ? saved : REST_DURATION;
+  } catch(e) { return REST_DURATION; }
+}
+function _setCustomDuration(sec) {
+  try { localStorage.setItem('_timerDuration', String(sec)); } catch(e) {}
+}
+
+// iOS Audio 정책: 유저 터치 시점에 AudioContext를 생성·resume해 두어야
+// 나중에 타이머가 자동으로 알람을 울릴 수 있음
+function _unlockAudio() {
+  try {
+    if (_audioCtx) { _audioCtx.resume(); return; }
+    _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // 무음 버퍼를 즉시 재생해 iOS 잠금 해제
+    const buf  = _audioCtx.createBuffer(1, 1, 22050);
+    const src  = _audioCtx.createBufferSource();
+    src.buffer = buf;
+    src.connect(_audioCtx.destination);
+    src.start(0);
+    _audioCtx.resume();
+  } catch(e) {}
+}
 
 function _fmtTime(s) {
   const v = Math.max(0, Math.floor(s));
@@ -56,13 +85,14 @@ function _triggerAlarm() {
   _timerSeconds = 0;
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   _syncTimerDOM();
-  // 진동 5번 (각 400ms, 간격 200ms)
+  // 진동 5번 (각 400ms, 간격 200ms) — Android만 지원
   try {
     if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400, 200, 400, 200, 400]);
   } catch(e) {}
-  // 비프음 5회 (1초 간격)
+  // 비프음 5회 (1초 간격) — 미리 unlock된 AudioContext 재사용
   try {
-    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
     [0, 1, 2, 3, 4].forEach(i => {
       const osc  = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -73,7 +103,7 @@ function _triggerAlarm() {
       osc.start(ctx.currentTime + i);
       osc.stop(ctx.currentTime + i + 0.5);
     });
-    setTimeout(() => { try { ctx.close(); } catch(e){} }, 5500);
+    setTimeout(() => { try { if (!_audioCtx) ctx.close(); } catch(e){} }, 5500);
   } catch(e) {}
   // 잠금화면 알림 (권한 있을 때)
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
@@ -83,9 +113,13 @@ function _triggerAlarm() {
 
 function startRestTimer() {
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
+  // ★ iOS 핵심: 유저 터치 이벤트 안에서 AudioContext 미리 unlock
+  _unlockAudio();
+  const dur = _getCustomDuration();
   _timerStartAt = Date.now();
   _timerState   = 'active';
-  _timerSeconds = REST_DURATION;
+  _timerSeconds = dur;
+  _countdownBeepedAt.clear();
   // 시작 시각을 localStorage에 저장 → 화면 꺼진 후 복원용
   try { localStorage.setItem('_restStartAt', String(_timerStartAt)); } catch(e){}
   _syncTimerDOM();
@@ -113,18 +147,37 @@ function startRestTimer() {
 
 function resetRestTimer() {
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
-  _timerSeconds = REST_DURATION;
+  _timerSeconds = _getCustomDuration();
   _timerState   = 'idle';
+  _countdownBeepedAt.clear();
   try { localStorage.removeItem('_restStartAt'); } catch(e){}
   _syncTimerDOM();
+}
+
+// 카운트다운 비프 (3·2·1초 전) — 짧고 높은 음
+ function _playCountdownBeep() {
+  try {
+    const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 1100; osc.type = 'sine';
+    gain.gain.setValueAtTime(0.5, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.18);
+  } catch(e) {}
+  try { if (navigator.vibrate) navigator.vibrate(120); } catch(e) {}
 }
 
 // 화면이 다시 켜질 때(visibilitychange) → 경과 시간 재계산
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
   if (_timerState !== 'active') return;
+  const dur = _getCustomDuration();
   const elapsed = (Date.now() - _timerStartAt) / 1000;
-  _timerSeconds = Math.max(0, REST_DURATION - elapsed);
+  _timerSeconds = Math.max(0, dur - elapsed);
   if (_timerSeconds <= 0) {
     _triggerAlarm();
   } else {
@@ -136,17 +189,24 @@ document.addEventListener('visibilitychange', () => {
 try {
   const saved = localStorage.getItem('_restStartAt');
   if (saved) {
+    const dur     = _getCustomDuration();
     const elapsed = (Date.now() - Number(saved)) / 1000;
-    if (elapsed < REST_DURATION) {
+    if (elapsed < dur) {
       _timerStartAt = Number(saved);
       _timerState   = 'active';
-      _timerSeconds = Math.max(0, REST_DURATION - elapsed);
+      _timerSeconds = Math.max(0, dur - elapsed);
+      _countdownBeepedAt.clear();
       // interval 재개 (DOM은 renderWorkout 후 _syncTimerDOM으로 갱신)
       _timerInterval = setInterval(() => {
-        const el = (Date.now() - _timerStartAt) / 1000;
-        _timerSeconds = Math.max(0, REST_DURATION - el);
+        const el  = (Date.now() - _timerStartAt) / 1000;
+        _timerSeconds = Math.max(0, dur - el);
+        const remaining = Math.ceil(_timerSeconds);
+        if (remaining <= 3 && remaining > 0 && !_countdownBeepedAt.has(remaining)) {
+          _countdownBeepedAt.add(remaining);
+          _playCountdownBeep();
+        }
         if (_timerSeconds <= 0) { _triggerAlarm(); } else { _syncTimerDOM(); }
-      }, 500);
+      }, 250);
     } else {
       localStorage.removeItem('_restStartAt');
     }
@@ -719,10 +779,12 @@ function renderWorkout(workoutData) {
   );
   body.appendChild(medsCard);
 
-  // ── 휴식 타이머 카드 (상태는 모듈 레벨 _timerState / _timerSeconds로 유지) ──
+  // ── 휴식 타이머 카드 ──
+  const dur0 = _getCustomDuration();
+  const durM  = Math.floor(dur0 / 60);
+  const durS  = dur0 % 60;
   const timerCard = document.createElement('div');
   timerCard.id = 'restTimerCard';
-  // re-render 후에도 현재 타이머 상태를 DOM에 복원
   timerCard.className = 'rest-timer-card' + (_timerState === 'idle' ? '' : ` ${_timerState}`);
   timerCard.innerHTML = `
     <div class="timer-icon">⏱️</div>
@@ -734,8 +796,33 @@ function renderWorkout(workoutData) {
         _timerState === 'active' ? '휴식 중... 다음 세트를 준비하세요' :
                                    '⏰ 휴식 완료! 화면을 터치해 끄기'
       }</div>
+      <div class="timer-set-row">
+        <label class="timer-set-label">휴식 시간</label>
+        <div class="timer-set-inputs">
+          <input class="timer-dur-input" id="timerDurMin" type="number"
+                 min="0" max="59" value="${durM}" inputmode="numeric" placeholder="분">
+          <span class="timer-dur-sep">분</span>
+          <input class="timer-dur-input" id="timerDurSec" type="number"
+                 min="0" max="59" value="${durS}" inputmode="numeric" placeholder="초">
+          <span class="timer-dur-sep">초</span>
+        </div>
+      </div>
     </div>
     <button class="timer-btn" id="timerResetBtn" title="리셋">↺</button>`;
+
+  // 분/초 입력 시 커스텀 시간 저장
+  function _onDurChange() {
+    const m = Math.max(0, parseInt(timerCard.querySelector('#timerDurMin').value) || 0);
+    const s = Math.max(0, Math.min(59, parseInt(timerCard.querySelector('#timerDurSec').value) || 0));
+    const total = m * 60 + s;
+    if (total > 0) {
+      _setCustomDuration(total);
+      if (_timerState === 'idle') { _timerSeconds = total; _syncTimerDOM(); }
+    }
+  }
+  timerCard.querySelector('#timerDurMin').addEventListener('change', _onDurChange);
+  timerCard.querySelector('#timerDurSec').addEventListener('change', _onDurChange);
+
   timerCard.addEventListener('click', () => {
     if (_timerState === 'alarm') resetRestTimer();
   });
