@@ -79,6 +79,107 @@ function _unlockAudio() {
   } catch(e) {}
 }
 
+// ===== 백그라운드 오디오 루프 (인스타그램/다른 앱 사용 중에도 JS 타이머 동작 유지) =====
+let _bgAudioKeeper = null;
+let _alarmBeepURL = null;
+let _countdownBeepURL = null;
+
+function _createBeepAudioURL(freq = 880, durationSec = 0.4) {
+  const sampleRate = 8000;
+  const numSamples = Math.floor(sampleRate * durationSec);
+  const buffer = new Uint8Array(44 + numSamples);
+  const view = new DataView(buffer.buffer);
+  
+  const writeString = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  writeString(36, 'data');
+  view.setUint32(40, numSamples, true);
+  
+  for (let i = 0; i < numSamples; i++) {
+    const t = i / sampleRate;
+    const sample = 128 + Math.round(50 * Math.sin(2 * Math.PI * freq * t));
+    buffer[44 + i] = Math.max(0, Math.min(255, sample));
+  }
+  
+  let binary = '';
+  for (let i = 0; i < buffer.length; i++) binary += String.fromCharCode(buffer[i]);
+  return 'data:audio/wav;base64,' + btoa(binary);
+}
+
+function _createSilentAudioURL() {
+  const sampleRate = 8000;
+  const numSamples = sampleRate;
+  const buffer = new Uint8Array(44 + numSamples);
+  const view = new DataView(buffer.buffer);
+  const writeString = (offset, str) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true);
+  view.setUint16(32, 1, true);
+  view.setUint16(34, 8, true);
+  writeString(36, 'data');
+  view.setUint32(40, numSamples, true);
+  buffer.fill(128, 44);
+  let binary = '';
+  for (let i = 0; i < buffer.length; i++) binary += String.fromCharCode(buffer[i]);
+  return 'data:audio/wav;base64,' + btoa(binary);
+}
+
+function _startBgAudioKeeper() {
+  try {
+    if (!_bgAudioKeeper) {
+      _bgAudioKeeper = new Audio(_createSilentAudioURL());
+      _bgAudioKeeper.loop = true;
+      _bgAudioKeeper.setAttribute('playsinline', '');
+    }
+    _bgAudioKeeper.play().catch(() => {});
+  } catch(e) {}
+}
+
+function _stopBgAudioKeeper() {
+  try {
+    if (_bgAudioKeeper) {
+      _bgAudioKeeper.pause();
+      _bgAudioKeeper.currentTime = 0;
+    }
+  } catch(e) {}
+}
+
+function _playHTML5Beep(freq = 880, durationSec = 0.4) {
+  try {
+    if (freq === 1100) {
+      if (!_countdownBeepURL) _countdownBeepURL = _createBeepAudioURL(1100, 0.18);
+      const a = new Audio(_countdownBeepURL);
+      a.play().catch(()=>{});
+    } else {
+      if (!_alarmBeepURL) _alarmBeepURL = _createBeepAudioURL(880, 0.4);
+      const a = new Audio(_alarmBeepURL);
+      a.play().catch(()=>{});
+    }
+  } catch(e) {}
+}
+
 function _fmtTime(s) {
   const v = Math.max(0, Math.floor(s));
   return `${String(Math.floor(v / 60)).padStart(2,'0')}:${String(v % 60).padStart(2,'0')}`;
@@ -123,10 +224,17 @@ function _triggerAlarm() {
     });
     setTimeout(() => { try { if (!_audioCtx) ctx.close(); } catch(e){} }, 5500);
   } catch(e) {}
+  // 비프음 5회 (HTML5 Audio — 백그라운드나 다른 앱 사용 중에도 재생)
+  try {
+    [0, 1000, 2000, 3000, 4000].forEach(delay => {
+      setTimeout(() => _playHTML5Beep(880, 0.4), delay);
+    });
+  } catch(e) {}
   // 잠금화면 알림 (권한 있을 때)
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try { new Notification('⏰ 휴식 완료!', { body: '다음 세트를 시작하세요! 💪', icon: 'assets/icon-192.png' }); } catch(e){}
   }
+  _stopBgAudioKeeper(); // 알람 울린 뒤 무음 유지 오디오 종료
 }
 
 function startRestTimer() {
@@ -153,6 +261,8 @@ function startRestTimer() {
 
   // 화면 꺼짐 방지 (Screen Wake Lock — iOS 16.4+ PWA 지원)
   _requestWakeLock();
+  // 인스타그램/다른 앱 전환 시에도 타이머가 안 멈추도록 무음 오디오 루프 재생
+  _startBgAudioKeeper();
 
   // 타이머 카드로 자동 스크롤
   const card = document.getElementById('restTimerCard');
@@ -181,6 +291,7 @@ function resetRestTimer() {
   _timerState   = 'idle';
   _countdownBeepedAt.clear();
   _releaseWakeLock(); // 리셋 시 Wake Lock 해제
+  _stopBgAudioKeeper(); // 리셋 시 백그라운드 오디오 루프 해제
   try { localStorage.removeItem('_restStartAt'); localStorage.removeItem('_restDurSnapshot'); } catch(e){}
   _syncTimerDOM();
 }
@@ -200,6 +311,7 @@ function resetRestTimer() {
     osc.stop(ctx.currentTime + 0.18);
   } catch(e) {}
   try { if (navigator.vibrate) navigator.vibrate(120); } catch(e) {}
+  _playHTML5Beep(1100, 0.18); // 인스타그램 등 다른 앱 사용 중에도 카운트다운 비프음 재생
 }
 
 // 화면이 다시 켜질 때(visibilitychange) → 경과 시간 재계산 + Wake Lock 재요청
@@ -208,6 +320,7 @@ document.addEventListener('visibilitychange', () => {
   if (_timerState !== 'active') return;
   // Wake Lock은 화면 꺼지면 자동 해제되므로 다시 켜질 때 재요청
   if (!_wakeLock) _requestWakeLock();
+  _startBgAudioKeeper();
   const dur = (() => {
     try { const s = parseInt(localStorage.getItem('_restDurSnapshot')); return (s > 0) ? s : _getCustomDuration(); } catch(e) { return _getCustomDuration(); }
   })();
