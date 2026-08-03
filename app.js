@@ -28,15 +28,7 @@ const REST_DURATION = 120;   // 세트 간 휴식 시간 (초)
 // ===== 휴식 타이머 — 백그라운드(화면 꺼짐) 대응 버전 =====
 // 전략: setInterval 대신 시작 시각(Date.now())을 기준으로 남은 시간 계산
 // 화면이 다시 켜질 때 visibilitychange 이벤트로 경과 시간을 재계산
-let _timerInterval = null;
-let _timerState    = 'idle';  // 'idle' | 'active' | 'alarm'
-let _timerStartAt  = 0;       // Date.now() 기준 시작 시각
-let _timerSeconds  = REST_DURATION; // 현재 표시용 남은 초
-let _audioCtx      = null;    // iOS: 유저 제스처 시점에 미리 unlock
-let _countdownBeepedAt = new Set(); // 카운트다운 비프 중복 방지
-
 // 사용자 설정 휴식 시간 — 모듈 레벨 변수로 유지 (DOM 의존 없음)
-// 렌더링시 재조회, 입력 시 즉시 반영
 let _currentDuration = (() => {
   try {
     const saved = parseInt(localStorage.getItem('_timerDuration'));
@@ -49,6 +41,13 @@ function _setCustomDuration(sec) {
   _currentDuration = sec;
   try { localStorage.setItem('_timerDuration', String(sec)); } catch(e) {}
 }
+
+let _timerInterval = null;
+let _timerState    = 'idle';  // 'idle' | 'active' | 'alarm'
+let _timerStartAt  = 0;       // Date.now() 기준 시작 시각
+let _timerSeconds  = _currentDuration; // 현재 표시용 남은 초
+let _audioCtx      = null;    // iOS: 유저 제스처 시점에 미리 unlock
+let _countdownBeepedAt = new Set(); // 카운트다운 비프 중복 방지
 
 // Screen Wake Lock — 타이머 실행 중 화면 꺼짐 방지 (iOS 16.4+ PWA 지원)
 let _wakeLock = null;
@@ -159,16 +158,21 @@ function startRestTimer() {
   const card = document.getElementById('restTimerCard');
   if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
-  // setInterval은 UI 갱신 전용 (경과 시간은 Date.now() 기준으로 계산)
+  // setInterval은 UI 갱신 및 카운트다운 비프 (경과 시간은 Date.now() 기준으로 계산)
   _timerInterval = setInterval(() => {
     const elapsed = (Date.now() - _timerStartAt) / 1000;
-    _timerSeconds = Math.max(0, REST_DURATION - elapsed);
+    _timerSeconds = Math.max(0, dur - elapsed);
+    const remaining = Math.ceil(_timerSeconds);
+    if (remaining <= 3 && remaining > 0 && !_countdownBeepedAt.has(remaining)) {
+      _countdownBeepedAt.add(remaining);
+      _playCountdownBeep();
+    }
     if (_timerSeconds <= 0) {
       _triggerAlarm();
     } else {
       _syncTimerDOM();
     }
-  }, 500); // 0.5초마다 체크해 정확도 향상
+  }, 250);
 }
 
 function resetRestTimer() {
