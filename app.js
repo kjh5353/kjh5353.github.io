@@ -65,122 +65,33 @@ function _releaseWakeLock() {
 
 // iOS Audio 정책: 유저 터치 시점에 AudioContext를 생성·resume해 두어야
 // 나중에 타이머가 자동으로 알람을 울릴 수 있음
-// ===== 3-Layer iOS 백그라운드 오디오 아키텍처 =====
-let _bgAudioKeeper = null;
-let _alarmBeepURL = null;
-let _countdownBeepURL = null;
-let _alarmAudioEl = null;
-let _countdownAudioEl = null;
+// ===== iOS 백그라운드 오디오 유지 (유튜브 뮤직 공존 & WebKit 절전모드 차단) =====
 let _silentWebAudioNode = null;
 
-function _createBeepAudioURL(freq = 880, durationSec = 0.4) {
-  const sampleRate = 8000;
-  const numSamples = Math.floor(sampleRate * durationSec);
-  const buffer = new Uint8Array(44 + numSamples);
-  const view = new DataView(buffer.buffer);
-  const writeString = (offset, str) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate, true);
-  view.setUint16(32, 1, true);
-  view.setUint16(34, 8, true);
-  writeString(36, 'data');
-  view.setUint32(40, numSamples, true);
-  for (let i = 0; i < numSamples; i++) {
-    const t = i / sampleRate;
-    const sample = 128 + Math.round(50 * Math.sin(2 * Math.PI * freq * t));
-    buffer[44 + i] = Math.max(0, Math.min(255, sample));
-  }
-  let binary = '';
-  for (let i = 0; i < buffer.length; i++) binary += String.fromCharCode(buffer[i]);
-  return 'data:audio/wav;base64,' + btoa(binary);
-}
-
-function _createSilentAudioURL() {
-  const sampleRate = 8000;
-  const numSamples = sampleRate * 10; // 10초 무음 WAV
-  const buffer = new Uint8Array(44 + numSamples);
-  const view = new DataView(buffer.buffer);
-  const writeString = (offset, str) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  writeString(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples, true);
-  writeString(8, 'WAVE');
-  writeString(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate, true);
-  view.setUint16(32, 1, true);
-  view.setUint16(34, 8, true);
-  writeString(36, 'data');
-  view.setUint32(40, numSamples, true);
-  buffer.fill(128, 44);
-  let binary = '';
-  for (let i = 0; i < buffer.length; i++) binary += String.fromCharCode(buffer[i]);
-  return 'data:audio/wav;base64,' + btoa(binary);
-}
-
-// 1. 유저 터치 시 AudioContext 및 HTML5 오디오 엘리먼트 사전 잠금 해제
+// 1. 유저 터치 시 AudioContext 초기화 및 잠금 해제
 function _unlockAudio() {
   try {
     if (!_audioCtx) _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (_audioCtx.state === 'suspended') _audioCtx.resume();
-    // 무음 버퍼 재생
+    // iOS 오디오 정책 잠금 해제용 1샘플 버퍼
     const buf = _audioCtx.createBuffer(1, 1, 22050);
     const src = _audioCtx.createBufferSource();
     src.buffer = buf; src.connect(_audioCtx.destination); src.start(0);
-
-    // HTML5 오디오 사전 생성 및 유저 제스처 내 play()->pause() 권한 획득 (iOS 백그라운드 재생 필수)
-    if (!_countdownBeepURL) _countdownBeepURL = _createBeepAudioURL(1100, 0.18);
-    if (!_alarmBeepURL) _alarmBeepURL = _createBeepAudioURL(880, 0.4);
-    if (!_countdownAudioEl) {
-      _countdownAudioEl = new Audio(_countdownBeepURL);
-      _countdownAudioEl.setAttribute('playsinline', '');
-    }
-    if (!_alarmAudioEl) {
-      _alarmAudioEl = new Audio(_alarmBeepURL);
-      _alarmAudioEl.setAttribute('playsinline', '');
-    }
-    _countdownAudioEl.play().then(() => { _countdownAudioEl.pause(); _countdownAudioEl.currentTime = 0; }).catch(()=>{});
-    _alarmAudioEl.play().then(() => { _alarmAudioEl.pause(); _alarmAudioEl.currentTime = 0; }).catch(()=>{});
   } catch(e) {}
 }
 
-// 2. 타이머 동작 중 iOS 백그라운드 오디오 세션 유지 (HTML5 loop + Web Audio 무음 발진기)
+// 2. 타이머 동작 중 iOS Web Audio 지속 신호 (30Hz, 0.003 gain)
+// - HTML5 <audio>나 MediaSession을 사용하지 않으므로 유튜브 뮤직/애플 뮤직이 절대 멈추지 않음!
+// - 0.003 gain(-50dB)은 사람이 들을 수 없지만 WebKit의 Silence Pruning(무음 감지 자동 절전)을 완벽 차단!
 function _startBgAudioKeeper() {
   try {
-    if (!_bgAudioKeeper) {
-      _bgAudioKeeper = new Audio(_createSilentAudioURL());
-      _bgAudioKeeper.loop = true;
-      _bgAudioKeeper.setAttribute('playsinline', '');
-    }
-    _bgAudioKeeper.play().catch(() => {});
-    if ('mediaSession' in navigator) {
-      navigator.mediaSession.metadata = new MediaMetadata({
-        title: '휴식 타이머 카운트다운',
-        artist: '일일 운동 플래너',
-        album: '세트 간 휴식 중...'
-      });
-    }
-    // Web Audio Continuous Silent Node (AudioContext 절전 모드 진입 완벽 방지)
     const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === 'suspended') ctx.resume();
     if (!_silentWebAudioNode) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      gain.gain.value = 0.00001; // 무음
-      osc.frequency.value = 20;
+      gain.gain.value = 0.003; // 사람이 들을 수 없는 극소 볼륨 (WebKit 무음 절전모드 방지 임계값 이상)
+      osc.frequency.value = 30; // 30Hz 초저역 주파수
       osc.connect(gain); gain.connect(ctx.destination);
       osc.start();
       _silentWebAudioNode = { osc, gain };
@@ -190,28 +101,11 @@ function _startBgAudioKeeper() {
 
 function _stopBgAudioKeeper() {
   try {
-    if (_bgAudioKeeper) {
-      _bgAudioKeeper.pause();
-      _bgAudioKeeper.currentTime = 0;
-    }
     if (_silentWebAudioNode) {
       _silentWebAudioNode.osc.stop();
       _silentWebAudioNode.osc.disconnect();
       _silentWebAudioNode.gain.disconnect();
       _silentWebAudioNode = null;
-    }
-  } catch(e) {}
-}
-
-// 3. 백그라운드/포그라운드 비프음 (사전 잠금 해제된 엘리먼트 사용)
-function _playHTML5Beep(freq = 880) {
-  try {
-    if (freq === 1100 && _countdownAudioEl) {
-      _countdownAudioEl.currentTime = 0;
-      _countdownAudioEl.play().catch(()=>{});
-    } else if (_alarmAudioEl) {
-      _alarmAudioEl.currentTime = 0;
-      _alarmAudioEl.play().catch(()=>{});
     }
   } catch(e) {}
 }
@@ -244,7 +138,7 @@ function _triggerAlarm() {
   try {
     if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400, 200, 400, 200, 400]);
   } catch(e) {}
-  // 비프음 5회 (1초 간격) — 미리 unlock된 AudioContext 재사용
+  // 비프음 5회 (1초 간격) — 유튜브 뮤직과 믹싱되며 명확히 출력
   try {
     const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === 'suspended') ctx.resume();
@@ -253,24 +147,17 @@ function _triggerAlarm() {
       const gain = ctx.createGain();
       osc.connect(gain); gain.connect(ctx.destination);
       osc.frequency.value = 880; osc.type = 'sine';
-      gain.gain.setValueAtTime(0.6, ctx.currentTime + i);
+      gain.gain.setValueAtTime(0.65, ctx.currentTime + i);
       gain.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.45);
       osc.start(ctx.currentTime + i);
       osc.stop(ctx.currentTime + i + 0.5);
-    });
-    setTimeout(() => { try { if (!_audioCtx) ctx.close(); } catch(e){} }, 5500);
-  } catch(e) {}
-  // 비프음 5회 (HTML5 Audio — 백그라운드나 다른 앱 사용 중에도 재생)
-  try {
-    [0, 1000, 2000, 3000, 4000].forEach(delay => {
-      setTimeout(() => _playHTML5Beep(880, 0.4), delay);
     });
   } catch(e) {}
   // 잠금화면 알림 (권한 있을 때)
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
     try { new Notification('⏰ 휴식 완료!', { body: '다음 세트를 시작하세요! 💪', icon: 'assets/icon-192.png' }); } catch(e){}
   }
-  _stopBgAudioKeeper(); // 알람 울린 뒤 무음 유지 오디오 종료
+  _stopBgAudioKeeper(); // 알람 울린 뒤 오디오 유지 발진기 종료
 }
 
 function startRestTimer() {
@@ -347,7 +234,6 @@ function resetRestTimer() {
     osc.stop(ctx.currentTime + 0.18);
   } catch(e) {}
   try { if (navigator.vibrate) navigator.vibrate(120); } catch(e) {}
-  _playHTML5Beep(1100, 0.18); // 인스타그램 등 다른 앱 사용 중에도 카운트다운 비프음 재생
 }
 
 // 화면이 다시 켜질 때(visibilitychange) → 경과 시간 재계산 + Wake Lock 재요청
