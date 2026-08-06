@@ -138,49 +138,29 @@ function _triggerAlarm() {
   try {
     if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400, 200, 400, 200, 400]);
   } catch(e) {}
-  // 비프음 5회 (1초 간격) — DynamicsCompressor로 3배 증폭 + 트리플 주파수 레이어
+  // 비프음 5회 (1초 간격) — 3배 큰 소리: 듀얼 주파수 레이어 + 최대 게인
   try {
     const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === 'suspended') ctx.resume();
-    // DynamicsCompressorNode를 디지털 앰프로 활용 (gain=1.0 한계를 돌파)
-    const comp = ctx.createDynamicsCompressor();
-    comp.threshold.setValueAtTime(-50, ctx.currentTime);
-    comp.knee.setValueAtTime(0, ctx.currentTime);
-    comp.ratio.setValueAtTime(1, ctx.currentTime);
-    comp.attack.setValueAtTime(0, ctx.currentTime);
-    comp.release.setValueAtTime(0.01, ctx.currentTime);
-    const masterGain = ctx.createGain();
-    masterGain.gain.value = 3.0; // ★ 3배 증폭
-    masterGain.connect(comp);
-    comp.connect(ctx.destination);
     [0, 1, 2, 3, 4].forEach(i => {
-      // 레이어 1: 880Hz 기본 톤 (square wave = 풍부한 배음)
-      const osc1 = ctx.createOscillator();
-      const g1   = ctx.createGain();
-      osc1.connect(g1); g1.connect(masterGain);
+      // 레이어 1: 880Hz 기본 톤
+      const osc1  = ctx.createOscillator();
+      const gain1 = ctx.createGain();
+      osc1.connect(gain1); gain1.connect(ctx.destination);
       osc1.frequency.value = 880; osc1.type = 'square';
-      g1.gain.setValueAtTime(0.7, ctx.currentTime + i);
-      g1.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.8);
+      gain1.gain.setValueAtTime(1.0, ctx.currentTime + i);
+      gain1.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.8);
       osc1.start(ctx.currentTime + i);
       osc1.stop(ctx.currentTime + i + 0.85);
-      // 레이어 2: 1760Hz 하모닉 (고주파 명확성)
-      const osc2 = ctx.createOscillator();
-      const g2   = ctx.createGain();
-      osc2.connect(g2); g2.connect(masterGain);
+      // 레이어 2: 1760Hz 하모닉 (명확도 강화)
+      const osc2  = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2); gain2.connect(ctx.destination);
       osc2.frequency.value = 1760; osc2.type = 'sine';
-      g2.gain.setValueAtTime(0.5, ctx.currentTime + i);
-      g2.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.6);
+      gain2.gain.setValueAtTime(0.6, ctx.currentTime + i);
+      gain2.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.6);
       osc2.start(ctx.currentTime + i);
       osc2.stop(ctx.currentTime + i + 0.65);
-      // 레이어 3: 440Hz 서브톤 (두께감·임팩트)
-      const osc3 = ctx.createOscillator();
-      const g3   = ctx.createGain();
-      osc3.connect(g3); g3.connect(masterGain);
-      osc3.frequency.value = 440; osc3.type = 'sawtooth';
-      g3.gain.setValueAtTime(0.4, ctx.currentTime + i);
-      g3.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.7);
-      osc3.start(ctx.currentTime + i);
-      osc3.stop(ctx.currentTime + i + 0.75);
     });
   } catch(e) {}
   // 잠금화면 알림 (권한 있을 때)
@@ -249,38 +229,19 @@ function resetRestTimer() {
   _syncTimerDOM();
 }
 
-// 카운트다운 비프 (3·2·1초 전) — DynamicsCompressor로 3배 증폭
-function _playCountdownBeep() {
+// 카운트다운 비프 (3·2·1초 전) — 짧고 높은 음
+ function _playCountdownBeep() {
   try {
     const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === 'suspended') ctx.resume();
-    const comp = ctx.createDynamicsCompressor();
-    comp.threshold.setValueAtTime(-50, ctx.currentTime);
-    comp.knee.setValueAtTime(0, ctx.currentTime);
-    comp.ratio.setValueAtTime(1, ctx.currentTime);
-    comp.attack.setValueAtTime(0, ctx.currentTime);
-    comp.release.setValueAtTime(0.01, ctx.currentTime);
-    const masterGain = ctx.createGain();
-    masterGain.gain.value = 3.0; // ★ 3배 증폭
-    masterGain.connect(comp);
-    comp.connect(ctx.destination);
-    // 듀얼 레이어: 1100Hz + 2200Hz
-    const osc1 = ctx.createOscillator();
-    const g1   = ctx.createGain();
-    osc1.connect(g1); g1.connect(masterGain);
-    osc1.frequency.value = 1100; osc1.type = 'square';
-    g1.gain.setValueAtTime(0.6, ctx.currentTime);
-    g1.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
-    osc1.start(ctx.currentTime);
-    osc1.stop(ctx.currentTime + 0.35);
-    const osc2 = ctx.createOscillator();
-    const g2   = ctx.createGain();
-    osc2.connect(g2); g2.connect(masterGain);
-    osc2.frequency.value = 2200; osc2.type = 'sine';
-    g2.gain.setValueAtTime(0.4, ctx.currentTime);
-    g2.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.25);
-    osc2.start(ctx.currentTime);
-    osc2.stop(ctx.currentTime + 0.3);
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 1100; osc.type = 'sine';
+    gain.gain.setValueAtTime(1.0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
   } catch(e) {}
   try { if (navigator.vibrate) navigator.vibrate(120); } catch(e) {}
 }
@@ -656,11 +617,10 @@ function collectData() {
 
 function collectTimetableData() {
   const tt = {};
-  document.querySelectorAll('.diet-row').forEach(row => {
-    const meal = row.dataset.meal;
-    const checked = row.querySelector('.diet-cb').checked;
-    const text = row.querySelector('.diet-input').value;
-    if (checked || text) tt[meal] = { checked, text };
+  document.querySelectorAll('.timetable-row').forEach(row => {
+    const time = row.dataset.time;
+    const val = row.querySelector('.timetable-input').value;
+    if (val) tt[time] = val;
   });
   return tt;
 }
@@ -836,33 +796,37 @@ document.getElementById('addTodoBtn').addEventListener('click', () => {
 function renderMemo(memo) { document.getElementById('memoArea').value = memo; }
 document.getElementById('memoArea').addEventListener('input', scheduleSave);
 
-// ===== DIET =====
-const DIET_MEALS = ['아침', '점심', '저녁', '회식', '간식'];
-
+// ===== TIMETABLE =====
 function renderTimetable(timetable) {
   const container = document.getElementById('timetableBody');
   if (!container) return;
   container.innerHTML = '';
-  DIET_MEALS.forEach((meal) => {
-    const val = timetable[meal] || { checked: false, text: '' };
-    // 구버전(문자열만 있던 시절) 호환성 처리
-    const checked = typeof val === 'object' ? val.checked : false;
-    const text = typeof val === 'object' ? val.text : val;
-
+  for (let i = 0; i < 24; i++) {
+    const hourStr = String(i).padStart(2, '0') + ':00';
+    const val = timetable[hourStr] || '';
+    
     const row = document.createElement('div');
-    row.className = 'diet-row';
-    row.dataset.meal = meal;
+    row.className = 'timetable-row';
+    row.dataset.time = hourStr;
     row.innerHTML = `
-      <label class="diet-cb-label">
-        <input type="checkbox" class="diet-cb" ${checked ? 'checked' : ''}>
-        <span class="diet-name">${meal}</span>
-      </label>
-      <input type="text" class="diet-input" value="${text}" placeholder="식단 내용 입력...">
+      <div class="timetable-time">${hourStr}</div>
+      <input type="text" class="timetable-input" value="${val}" placeholder="일정 입력...">
     `;
-    row.querySelector('.diet-input').addEventListener('input', scheduleSave);
-    row.querySelector('.diet-cb').addEventListener('change', scheduleSave);
+    row.querySelector('.timetable-input').addEventListener('input', scheduleSave);
     container.appendChild(row);
-  });
+  }
+  // 현재 시스템 시간에 맞춰 중앙으로 스크롤 및 현재 시간 표시
+  setTimeout(() => {
+    const now = new Date();
+    const currentHour = String(now.getHours()).padStart(2, '0') + ':00';
+    const row = container.querySelector(`[data-time="${currentHour}"]`);
+    if (row) {
+      row.classList.add('is-current-hour');
+      const scrollContainer = container.parentElement;
+      const targetScroll = row.offsetTop - (scrollContainer.clientHeight / 2) + (row.clientHeight / 2);
+      scrollContainer.scrollTop = Math.max(0, targetScroll);
+    }
+  }, 10);
 }
 
 // ===== RENDER WORKOUT =====

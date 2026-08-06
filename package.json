@@ -1,0 +1,39 @@
+{
+  "name": "daily-planner",
+  "version": "1.0.0",
+  "description": "매일 일정을 기록하는 데일리 플래너",
+  "main": "electron-main.js",
+  "author": "Daily Planner",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.dailyplanner.app",
+    "productName": "Daily Planner",
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "icon": "assets/icon.icns",
+      "darkModeSupport": true
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "app.js",
+      "electron-main.js",
+      "assets/**"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^36.3.2",
+    "electron-builder": "^26.0.12"
+  }
+}
