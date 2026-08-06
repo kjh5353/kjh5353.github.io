@@ -1392,8 +1392,8 @@ body {
 .med-item {
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: clamp(3px, 0.35vw, 5px) clamp(4px, 0.4vw, 6px);
+  gap: 5px;
+  padding: clamp(5px, 0.5vw, 8px) clamp(6px, 0.6vw, 10px);
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -1410,10 +1410,10 @@ body {
 .med-cb {
   appearance: none;
   -webkit-appearance: none;
-  width: clamp(13px, 1vw, 16px);
-  height: clamp(13px, 1vw, 16px);
-  border: 1.5px solid rgba(74,222,128,0.35);
-  border-radius: 4px;
+  width: clamp(16px, 1.4vw, 20px);
+  height: clamp(16px, 1.4vw, 20px);
+  border: 2px solid rgba(74,222,128,0.35);
+  border-radius: 5px;
   background: rgba(255,255,255,0.05);
   cursor: pointer;
   position: relative;
@@ -1432,14 +1432,14 @@ body {
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   color: #fff;
-  font-size: clamp(7px, 0.55vw, 9px);
+  font-size: clamp(8px, 0.7vw, 11px);
   font-weight: 900;
 }
 .med-label {
-  font-size: clamp(7px, 0.55vw, 8px);
+  font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1449,8 +1449,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: clamp(3px, 0.35vw, 5px) clamp(4px, 0.4vw, 6px);
+  gap: 3px;
+  padding: clamp(5px, 0.5vw, 8px) clamp(6px, 0.6vw, 10px);
   background: rgba(255,255,255,0.03);
   border: 1px dashed rgba(74,222,128,0.25);
   border-radius: var(--radius-sm);
@@ -1458,7 +1458,7 @@ body {
   transition: all var(--transition);
   user-select: none;
   color: rgba(74,222,128,0.6);
-  font-size: clamp(7px, 0.55vw, 8px);
+  font-size: var(--fs-xs);
   font-weight: 600;
 }
 .meds-add-btn:hover {
