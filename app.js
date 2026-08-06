@@ -12,10 +12,35 @@ const NUM_TODO_DEFAULT = 5;
 
 // ─────────────────────────────────────────────
 //  STORAGE
-//  • planner_global      → todos (전역)
-//  • planner_YYYY-MM-DD  → memo + workout (날짜별)
+//  • planner_global           → todos (전역)
+//  • planner_checklist_labels → 체크리스트 커스텀 항목 레이블 (전역, 날짜 무관)
+//  • planner_YYYY-MM-DD       → memo + workout (날짜별)
 // ─────────────────────────────────────────────
 const GLOBAL_KEY = 'planner_global';
+const CHECKLIST_LABELS_KEY = 'planner_checklist_labels';
+
+// 체크리스트 레이블 전용 저장/불러오기
+function saveChecklistLabels(labels) {
+  localStorage.setItem(CHECKLIST_LABELS_KEY, JSON.stringify(labels || []));
+}
+function loadChecklistLabels() {
+  try {
+    const raw = localStorage.getItem(CHECKLIST_LABELS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  // 구버전 호환: planner_global에 customCheckLabels가 있으면 마이그레이션
+  try {
+    const raw = localStorage.getItem(GLOBAL_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (Array.isArray(p.customCheckLabels) && p.customCheckLabels.length > 0) {
+        saveChecklistLabels(p.customCheckLabels);
+        return p.customCheckLabels;
+      }
+    }
+  } catch (e) {}
+  return [];
+}
 
 // ===== FITNESS CONFIG =====
 const MAX_SETS      = 5;
@@ -493,14 +518,25 @@ function loadGlobalData() {
   if (raw) {
     try {
       const p = JSON.parse(raw);
-      if (p && p.todos) return { todos: p.todos };
+      if (p && p.todos) return {
+        todos: p.todos,
+        customCheckLabels: Array.isArray(p.customCheckLabels) ? p.customCheckLabels : []
+      };
     } catch (e) {}
   }
-  return { todos: defaultTodos() };
+  return { todos: defaultTodos(), customCheckLabels: [] };
 }
 
 function saveGlobalData(global) {
-  localStorage.setItem(GLOBAL_KEY, JSON.stringify(global));
+  // customCheckLabels는 항상 최신 전역 데이터에서 가져와 병합
+  const existing = loadGlobalData();
+  const merged = Object.assign({}, existing, global);
+  localStorage.setItem(GLOBAL_KEY, JSON.stringify(merged));
+}
+
+// 전역 레이블 목록만 업데이트 (체크 상태 영향 없음) — 전용 키에 저장
+function saveGlobalCheckLabels(labels) {
+  saveChecklistLabels(labels);
 }
 
 function loadDayRecord(date) {
@@ -508,14 +544,31 @@ function loadDayRecord(date) {
   if (raw) {
     try {
       const p = JSON.parse(raw);
+      const workout = p.workout || defaultWorkout();
+      // 날짜 기록에 customChecks가 없으면 전역 레이블로 채움 (체크 상태 false)
+      if (!workout.customChecks || workout.customChecks.length === 0) {
+        workout.customChecks = loadChecklistLabels().map(label => ({ label, checked: false }));
+      } else {
+        // 전역 레이블과 동기화: 전역에 있지만 날짜 기록에 없는 항목 추가
+        const globalLabels = loadChecklistLabels();
+        const existingLabels = workout.customChecks.map(c => c.label);
+        globalLabels.forEach(label => {
+          if (!existingLabels.includes(label)) {
+            workout.customChecks.push({ label, checked: false });
+          }
+        });
+      }
       return {
         timetable: p.timetable || {},
         memo   : typeof p.memo === 'string' ? p.memo : '',
-        workout: p.workout || defaultWorkout()
+        workout
       };
     } catch (e) {}
   }
-  return { timetable: {}, memo: '', workout: defaultWorkout() };
+  // 새 날짜: 전용 키에서 레이블 불러와 customChecks 초기화
+  const workout = defaultWorkout();
+  workout.customChecks = loadChecklistLabels().map(label => ({ label, checked: false }));
+  return { timetable: {}, memo: '', workout };
 }
 
 function saveDayRecord(date, timetable, memo, workout) {
@@ -626,6 +679,9 @@ function scheduleSave() {
   saveTimer = setTimeout(async () => {
     saveTimer = null;
     const { todos, timetable, memo, workout } = collectData();
+    // customChecks 레이블을 전용 키에 즉시 저장 (날짜 변경 후에도 항목 유지)
+    const customCheckLabels = (workout.customChecks || []).map(c => c.label);
+    saveChecklistLabels(customCheckLabels);
     const globalData = { todos };
     const dayData    = { timetable, memo, workout };
     const dStr       = dateKey(currentDate);
@@ -909,13 +965,22 @@ function renderWorkout(workoutData) {
   medsCard.querySelector('#addCheckItemBtn').addEventListener('click', () => {
     const label = prompt('체크 항목 이름을 입력하세요:');
     if (label && label.trim()) {
-      const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
-      const dayData = JSON.parse(localStorage.getItem('planner_' + dateKey) || '{}');
+      const trimmedLabel = label.trim();
+      // 전역 레이블 목록에 추가 (날짜가 바뀌어도 항목 유지)
+      const global = loadGlobalData();
+      if (!global.customCheckLabels) global.customCheckLabels = [];
+      if (!global.customCheckLabels.includes(trimmedLabel)) {
+        global.customCheckLabels.push(trimmedLabel);
+        saveGlobalCheckLabels(global.customCheckLabels);
+      }
+      // 현재 날짜 기록에도 추가
+      const dKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+      const dayData = JSON.parse(localStorage.getItem('planner_' + dKey) || '{}');
       const workout = dayData.workout || defaultWorkout();
       if (!workout.customChecks) workout.customChecks = [];
-      workout.customChecks.push({ label: label.trim(), checked: false });
+      workout.customChecks.push({ label: trimmedLabel, checked: false });
       dayData.workout = workout;
-      localStorage.setItem('planner_' + dateKey, JSON.stringify(dayData));
+      localStorage.setItem('planner_' + dKey, JSON.stringify(dayData));
       renderWorkout(workout);
     }
   });
@@ -925,13 +990,18 @@ function renderWorkout(workoutData) {
       e.preventDefault();
       e.stopPropagation();
       const idx = parseInt(btn.dataset.delIdx);
-      const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
-      const dayData = JSON.parse(localStorage.getItem('planner_' + dateKey) || '{}');
+      const dKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+      const dayData = JSON.parse(localStorage.getItem('planner_' + dKey) || '{}');
       const workout = dayData.workout || defaultWorkout();
       if (workout.customChecks && workout.customChecks.length > idx) {
+        const removedLabel = workout.customChecks[idx].label;
         workout.customChecks.splice(idx, 1);
         dayData.workout = workout;
-        localStorage.setItem('planner_' + dateKey, JSON.stringify(dayData));
+        localStorage.setItem('planner_' + dKey, JSON.stringify(dayData));
+        // 전역 레이블 목록에서도 삭제 (다음 날부터도 표시 안 됨)
+        const global = loadGlobalData();
+        global.customCheckLabels = (global.customCheckLabels || []).filter(l => l !== removedLabel);
+        saveGlobalCheckLabels(global.customCheckLabels);
         renderWorkout(workout);
       }
     });
@@ -1179,10 +1249,11 @@ function loadDay(date) {
     clearTimeout(saveTimer);
     saveTimer = null;
     const { todos, timetable, memo, workout } = collectData();
-    saveGlobalData({ todos });
+    const customCheckLabels = (workout.customChecks || []).map(c => c.label);
+    saveGlobalData({ todos, customCheckLabels });
     saveDayRecord(currentDate, timetable, memo, workout);
     if (typeof PlannerSync !== 'undefined' && PlannerSync.isConnected()) {
-      PlannerSync.push({ todos }, dateKey(currentDate), { timetable, memo, workout });
+      PlannerSync.push({ todos, customCheckLabels }, dateKey(currentDate), { timetable, memo, workout });
     }
   }
 
