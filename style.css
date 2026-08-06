@@ -1385,21 +1385,22 @@ body {
 /* ===== 복약 기록 체크박스 그리드 ===== */
 .meds-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(8px, 1vw, 14px);
+  grid-template-columns: repeat(3, 1fr);
+  gap: clamp(4px, 0.6vw, 8px);
   margin-top: 4px;
 }
 .med-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: clamp(8px, 0.9vw, 12px) clamp(10px, 1vw, 16px);
+  gap: 3px;
+  padding: clamp(3px, 0.35vw, 5px) clamp(4px, 0.4vw, 6px);
   background: rgba(255,255,255,0.04);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition);
   user-select: none;
+  min-width: 0;
 }
 .med-item:hover { background: rgba(255,255,255,0.07); border-color: rgba(74,222,128,0.3); }
 .med-item:has(.med-cb:checked) {
@@ -1409,10 +1410,10 @@ body {
 .med-cb {
   appearance: none;
   -webkit-appearance: none;
-  width: clamp(20px, 2vw, 26px);
-  height: clamp(20px, 2vw, 26px);
-  border: 2px solid rgba(74,222,128,0.35);
-  border-radius: 6px;
+  width: clamp(13px, 1vw, 16px);
+  height: clamp(13px, 1vw, 16px);
+  border: 1.5px solid rgba(74,222,128,0.35);
+  border-radius: 4px;
   background: rgba(255,255,255,0.05);
   cursor: pointer;
   position: relative;
@@ -1431,14 +1432,66 @@ body {
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   color: #fff;
-  font-size: clamp(11px, 1vw, 14px);
+  font-size: clamp(7px, 0.55vw, 9px);
   font-weight: 900;
 }
 .med-label {
-  font-size: var(--fs-sm);
-  font-weight: 700;
+  font-size: clamp(7px, 0.55vw, 8px);
+  font-weight: 600;
   color: var(--text-primary);
-  letter-spacing: 0.01em;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.meds-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: clamp(3px, 0.35vw, 5px) clamp(4px, 0.4vw, 6px);
+  background: rgba(255,255,255,0.03);
+  border: 1px dashed rgba(74,222,128,0.25);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition);
+  user-select: none;
+  color: rgba(74,222,128,0.6);
+  font-size: clamp(7px, 0.55vw, 8px);
+  font-weight: 600;
+}
+.meds-add-btn:hover {
+  background: rgba(74,222,128,0.08);
+  border-color: rgba(74,222,128,0.4);
+  color: rgba(74,222,128,0.9);
+}
+.meds-add-btn svg {
+  flex-shrink: 0;
+}
+.meds-del-btn {
+  display: none;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: rgba(255,59,48,0.2);
+  color: #ff3b30;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: all var(--transition);
+}
+.med-item:hover .meds-del-btn.custom {
+  display: flex;
+}
+.meds-del-btn:hover {
+  background: rgba(255,59,48,0.4);
 }
 
 

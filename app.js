@@ -138,19 +138,49 @@ function _triggerAlarm() {
   try {
     if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400, 200, 400, 200, 400]);
   } catch(e) {}
-  // 비프음 5회 (1초 간격) — 유튜브 뮤직과 믹싱되며 명확히 출력
+  // 비프음 5회 (1초 간격) — DynamicsCompressor로 3배 증폭 + 트리플 주파수 레이어
   try {
     const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === 'suspended') ctx.resume();
+    // DynamicsCompressorNode를 디지털 앰프로 활용 (gain=1.0 한계를 돌파)
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.setValueAtTime(-50, ctx.currentTime);
+    comp.knee.setValueAtTime(0, ctx.currentTime);
+    comp.ratio.setValueAtTime(1, ctx.currentTime);
+    comp.attack.setValueAtTime(0, ctx.currentTime);
+    comp.release.setValueAtTime(0.01, ctx.currentTime);
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = 3.0; // ★ 3배 증폭
+    masterGain.connect(comp);
+    comp.connect(ctx.destination);
     [0, 1, 2, 3, 4].forEach(i => {
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = 880; osc.type = 'sine';
-      gain.gain.setValueAtTime(0.65, ctx.currentTime + i);
-      gain.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.45);
-      osc.start(ctx.currentTime + i);
-      osc.stop(ctx.currentTime + i + 0.5);
+      // 레이어 1: 880Hz 기본 톤 (square wave = 풍부한 배음)
+      const osc1 = ctx.createOscillator();
+      const g1   = ctx.createGain();
+      osc1.connect(g1); g1.connect(masterGain);
+      osc1.frequency.value = 880; osc1.type = 'square';
+      g1.gain.setValueAtTime(0.7, ctx.currentTime + i);
+      g1.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.8);
+      osc1.start(ctx.currentTime + i);
+      osc1.stop(ctx.currentTime + i + 0.85);
+      // 레이어 2: 1760Hz 하모닉 (고주파 명확성)
+      const osc2 = ctx.createOscillator();
+      const g2   = ctx.createGain();
+      osc2.connect(g2); g2.connect(masterGain);
+      osc2.frequency.value = 1760; osc2.type = 'sine';
+      g2.gain.setValueAtTime(0.5, ctx.currentTime + i);
+      g2.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.6);
+      osc2.start(ctx.currentTime + i);
+      osc2.stop(ctx.currentTime + i + 0.65);
+      // 레이어 3: 440Hz 서브톤 (두께감·임팩트)
+      const osc3 = ctx.createOscillator();
+      const g3   = ctx.createGain();
+      osc3.connect(g3); g3.connect(masterGain);
+      osc3.frequency.value = 440; osc3.type = 'sawtooth';
+      g3.gain.setValueAtTime(0.4, ctx.currentTime + i);
+      g3.gain.linearRampToValueAtTime(0, ctx.currentTime + i + 0.7);
+      osc3.start(ctx.currentTime + i);
+      osc3.stop(ctx.currentTime + i + 0.75);
     });
   } catch(e) {}
   // 잠금화면 알림 (권한 있을 때)
@@ -219,19 +249,38 @@ function resetRestTimer() {
   _syncTimerDOM();
 }
 
-// 카운트다운 비프 (3·2·1초 전) — 짧고 높은 음
- function _playCountdownBeep() {
+// 카운트다운 비프 (3·2·1초 전) — DynamicsCompressor로 3배 증폭
+function _playCountdownBeep() {
   try {
     const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === 'suspended') ctx.resume();
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.value = 1100; osc.type = 'sine';
-    gain.gain.setValueAtTime(0.5, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.18);
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.setValueAtTime(-50, ctx.currentTime);
+    comp.knee.setValueAtTime(0, ctx.currentTime);
+    comp.ratio.setValueAtTime(1, ctx.currentTime);
+    comp.attack.setValueAtTime(0, ctx.currentTime);
+    comp.release.setValueAtTime(0.01, ctx.currentTime);
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = 3.0; // ★ 3배 증폭
+    masterGain.connect(comp);
+    comp.connect(ctx.destination);
+    // 듀얼 레이어: 1100Hz + 2200Hz
+    const osc1 = ctx.createOscillator();
+    const g1   = ctx.createGain();
+    osc1.connect(g1); g1.connect(masterGain);
+    osc1.frequency.value = 1100; osc1.type = 'square';
+    g1.gain.setValueAtTime(0.6, ctx.currentTime);
+    g1.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+    osc1.start(ctx.currentTime);
+    osc1.stop(ctx.currentTime + 0.35);
+    const osc2 = ctx.createOscillator();
+    const g2   = ctx.createGain();
+    osc2.connect(g2); g2.connect(masterGain);
+    osc2.frequency.value = 2200; osc2.type = 'sine';
+    g2.gain.setValueAtTime(0.4, ctx.currentTime);
+    g2.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.25);
+    osc2.start(ctx.currentTime);
+    osc2.stop(ctx.currentTime + 0.3);
   } catch(e) {}
   try { if (navigator.vibrate) navigator.vibrate(120); } catch(e) {}
 }
@@ -623,6 +672,14 @@ function collectWorkoutData() {
     supp2  : document.getElementById('medSupp2')?.checked    || false
   };
 
+  // 커스텀 체크 항목 수집
+  const customChecks = [];
+  document.querySelectorAll('.custom-check').forEach(cb => {
+    const idx = parseInt(cb.dataset.customIdx);
+    const label = cb.closest('.med-item')?.querySelector('.med-label')?.textContent || '';
+    customChecks.push({ label, checked: cb.checked });
+  });
+
   const exercises = [];
   document.querySelectorAll('.workout-exercise').forEach(el => {
     const checks = [];
@@ -634,7 +691,7 @@ function collectWorkoutData() {
       repsPerSet: el.querySelector('.ex-reps-input')?.value || ''
     });
   });
-  return { meds, exercises };
+  return { meds, exercises, customChecks };
 }
 
 // ===== DATE UI =====
@@ -818,15 +875,22 @@ function renderWorkout(workoutData) {
 
   const w = workoutData || defaultWorkout();
   const meds = w.meds || { bp: false, glucose: false, supp1: false, supp2: false };
+  const customChecks = w.customChecks || [];
   const history = buildRecentHistory();
   const groupInfo = getGroupRestDays(history, currentDate);
 
-  // ── 복약 기록 (2열 체크박스) ──
+  // ── 체크 리스트 (3열 체크박스 + 커스텀 항목 추가) ──
   const medsCard = document.createElement('div');
   medsCard.className = 'health-card';
+  let customItemsHtml = customChecks.map((item, idx) => `
+      <label class="med-item">
+        <input type="checkbox" class="med-cb custom-check" data-custom-idx="${idx}" ${item.checked ? 'checked' : ''}>
+        <span class="med-label">${item.label}</span>
+        <button class="meds-del-btn custom" data-del-idx="${idx}" title="삭제">✕</button>
+      </label>`).join('');
   medsCard.innerHTML = `
-    <div class="health-title">💊 복약 기록</div>
-    <div class="meds-grid">
+    <div class="health-title">✅ 체크 리스트</div>
+    <div class="meds-grid" id="medsGrid">
       <label class="med-item">
         <input type="checkbox" class="med-cb" id="medBp" ${meds.bp ? 'checked' : ''}>
         <span class="med-label">혈압</span>
@@ -835,18 +899,46 @@ function renderWorkout(workoutData) {
         <input type="checkbox" class="med-cb" id="medGlucose" ${meds.glucose ? 'checked' : ''}>
         <span class="med-label">혈당</span>
       </label>
-      <label class="med-item">
-        <input type="checkbox" class="med-cb" id="medSupp1" ${meds.supp1 ? 'checked' : ''}>
-        <span class="med-label">영양제 1</span>
-      </label>
-      <label class="med-item">
-        <input type="checkbox" class="med-cb" id="medSupp2" ${meds.supp2 ? 'checked' : ''}>
-        <span class="med-label">영양제 2</span>
-      </label>
+      ${customItemsHtml}
+      <div class="meds-add-btn" id="addCheckItemBtn" title="항목 추가">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        +추가
+      </div>
     </div>`;
   medsCard.querySelectorAll('.med-cb').forEach(cb =>
     cb.addEventListener('change', scheduleSave)
   );
+  // '+추가' 버튼 이벤트
+  medsCard.querySelector('#addCheckItemBtn').addEventListener('click', () => {
+    const label = prompt('체크 항목 이름을 입력하세요:');
+    if (label && label.trim()) {
+      const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+      const dayData = JSON.parse(localStorage.getItem('planner_' + dateKey) || '{}');
+      const workout = dayData.workout || defaultWorkout();
+      if (!workout.customChecks) workout.customChecks = [];
+      workout.customChecks.push({ label: label.trim(), checked: false });
+      dayData.workout = workout;
+      localStorage.setItem('planner_' + dateKey, JSON.stringify(dayData));
+      renderWorkout(workout);
+    }
+  });
+  // 삭제 버튼 이벤트
+  medsCard.querySelectorAll('.meds-del-btn.custom').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const idx = parseInt(btn.dataset.delIdx);
+      const dateKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth()+1).padStart(2,'0')}-${String(currentDate.getDate()).padStart(2,'0')}`;
+      const dayData = JSON.parse(localStorage.getItem('planner_' + dateKey) || '{}');
+      const workout = dayData.workout || defaultWorkout();
+      if (workout.customChecks && workout.customChecks.length > idx) {
+        workout.customChecks.splice(idx, 1);
+        dayData.workout = workout;
+        localStorage.setItem('planner_' + dateKey, JSON.stringify(dayData));
+        renderWorkout(workout);
+      }
+    });
+  });
   body.appendChild(medsCard);
 
   // ── 휴식 타이머 카드 ──
