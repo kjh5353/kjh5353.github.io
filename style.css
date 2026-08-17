@@ -609,10 +609,7 @@ body {
   letter-spacing: 0.09em;
   padding: var(--sp-md) var(--sp-md) var(--sp-sm);
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: clamp(52px, 5vw, 66px);
   background: var(--bg-surface);
-  z-index: 10;
   flex-shrink: 0;
 }
 
@@ -752,10 +749,8 @@ body {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: clamp(52px, 5vw, 66px);
   background: var(--bg-surface);
-  z-index: 10;
+  flex-shrink: 0;
   padding-right: var(--sp-md);
 }
 
@@ -2048,11 +2043,10 @@ body {
     border-bottom: 1px solid var(--border);
   }
 
-  /* Remove sticky on mobile */
+  /* Remove sticky on mobile (already removed globally, keep for safety) */
   .section-title,
   .section-title-row {
     position: static !important;
-    top: auto !important;
   }
 
   /* Exercise header wraps better on small screens */
@@ -2067,11 +2061,11 @@ body {
     margin-top: 2px;
   }
   .todo-items {
-    max-height: 90px !important;
+    max-height: 160px !important; /* 약 4개 항목 표시 */
   }
   .timetable-scroll-container,
   .diet-scroll-container {
-    max-height: 180px !important; 
+    max-height: 100px !important; /* 약 2개 식단 항목 표시 */
   }
   .planner-page,
   .fitness-layout,

@@ -73,6 +73,7 @@ let _timerStartAt  = 0;       // Date.now() 기준 시작 시각
 let _timerSeconds  = _currentDuration; // 현재 표시용 남은 초
 let _audioCtx      = null;    // iOS: 유저 제스처 시점에 미리 unlock
 let _countdownBeepedAt = new Set(); // 카운트다운 비프 중복 방지
+let _scheduledAlarmNodes = []; // 백그라운드 알람용 예약된 노드들
 
 // Screen Wake Lock — 타이머 실행 중 화면 꺼짐 방지 (iOS 16.4+ PWA 지원)
 let _wakeLock = null;
@@ -215,6 +216,89 @@ function _triggerAlarm() {
   _stopBgAudioKeeper(); // 알람 울린 뒤 오디오 유지 발진기 종료
 }
 
+// 백그라운드 알람 예약: 타이머 시작 시 Web Audio API로 dur초 후 소리를 미리 예약
+// iOS에서 setInterval이 정지되어도 AudioContext의 예약된 노드는 정확한 시간에 재생됨
+function _scheduleBackgroundAlarm(dur) {
+  _cancelScheduledAlarm(); // 이전 예약 정리
+  try {
+    const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+    const alarmTime = ctx.currentTime + dur;
+    const nodes = [];
+    // DynamicsCompressor로 3배 증폭
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.setValueAtTime(-50, ctx.currentTime);
+    comp.knee.setValueAtTime(0, ctx.currentTime);
+    comp.ratio.setValueAtTime(1, ctx.currentTime);
+    comp.attack.setValueAtTime(0, ctx.currentTime);
+    comp.release.setValueAtTime(0.01, ctx.currentTime);
+    const masterGain = ctx.createGain();
+    masterGain.gain.value = 3.0;
+    masterGain.connect(comp);
+    comp.connect(ctx.destination);
+    nodes.push({ node: comp, type: 'comp' }, { node: masterGain, type: 'gain' });
+    // 카운트다운 비프 3-2-1초 전
+    [3, 2, 1].forEach(sec => {
+      const t = alarmTime - sec;
+      if (t <= ctx.currentTime) return;
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.connect(g); g.connect(masterGain);
+      o.frequency.value = 1100; o.type = 'square';
+      g.gain.setValueAtTime(0, ctx.currentTime);
+      g.gain.setValueAtTime(0.6, t);
+      g.gain.linearRampToValueAtTime(0, t + 0.3);
+      o.start(t); o.stop(t + 0.35);
+      nodes.push({ node: o, type: 'osc' }, { node: g, type: 'gain' });
+    });
+    // 알람 비프 5회 (1초 간격)
+    [0, 1, 2, 3, 4].forEach(i => {
+      const t = alarmTime + i;
+      // 880Hz 기본 톤
+      const o1 = ctx.createOscillator();
+      const g1 = ctx.createGain();
+      o1.connect(g1); g1.connect(masterGain);
+      o1.frequency.value = 880; o1.type = 'square';
+      g1.gain.setValueAtTime(0, ctx.currentTime);
+      g1.gain.setValueAtTime(0.7, t);
+      g1.gain.linearRampToValueAtTime(0, t + 0.8);
+      o1.start(t); o1.stop(t + 0.85);
+      nodes.push({ node: o1, type: 'osc' }, { node: g1, type: 'gain' });
+      // 1760Hz 하모닉
+      const o2 = ctx.createOscillator();
+      const g2 = ctx.createGain();
+      o2.connect(g2); g2.connect(masterGain);
+      o2.frequency.value = 1760; o2.type = 'sine';
+      g2.gain.setValueAtTime(0, ctx.currentTime);
+      g2.gain.setValueAtTime(0.5, t);
+      g2.gain.linearRampToValueAtTime(0, t + 0.6);
+      o2.start(t); o2.stop(t + 0.65);
+      nodes.push({ node: o2, type: 'osc' }, { node: g2, type: 'gain' });
+      // 440Hz 서브톤
+      const o3 = ctx.createOscillator();
+      const g3 = ctx.createGain();
+      o3.connect(g3); g3.connect(masterGain);
+      o3.frequency.value = 440; o3.type = 'sawtooth';
+      g3.gain.setValueAtTime(0, ctx.currentTime);
+      g3.gain.setValueAtTime(0.4, t);
+      g3.gain.linearRampToValueAtTime(0, t + 0.7);
+      o3.start(t); o3.stop(t + 0.75);
+      nodes.push({ node: o3, type: 'osc' }, { node: g3, type: 'gain' });
+    });
+    _scheduledAlarmNodes = nodes;
+  } catch(e) {}
+}
+
+function _cancelScheduledAlarm() {
+  _scheduledAlarmNodes.forEach(({ node, type }) => {
+    try {
+      if (type === 'osc') { node.stop(); }
+      node.disconnect();
+    } catch(e) {}
+  });
+  _scheduledAlarmNodes = [];
+}
+
 function startRestTimer() {
   if (_timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
   // ★ iOS 핵심: 유저 터치 이벤트 안에서 AudioContext 미리 unlock
@@ -241,6 +325,8 @@ function startRestTimer() {
   _requestWakeLock();
   // 인스타그램/다른 앱 전환 시에도 타이머가 안 멈추도록 무음 오디오 루프 재생
   _startBgAudioKeeper();
+  // ★ 백그라운드 알람 예약: dur초 후에 소리가 울리도록 Web Audio로 미리 스케줄링
+  _scheduleBackgroundAlarm(dur);
 
   // 타이머 카드로 자동 스크롤
   const card = document.getElementById('restTimerCard');
@@ -270,6 +356,7 @@ function resetRestTimer() {
   _countdownBeepedAt.clear();
   _releaseWakeLock(); // 리셋 시 Wake Lock 해제
   _stopBgAudioKeeper(); // 리셋 시 백그라운드 오디오 루프 해제
+  _cancelScheduledAlarm(); // 리셋 시 예약된 백그라운드 알람 취소
   try { localStorage.removeItem('_restStartAt'); localStorage.removeItem('_restDurSnapshot'); } catch(e){}
   _syncTimerDOM();
 }
