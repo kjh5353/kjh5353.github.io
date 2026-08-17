@@ -749,7 +749,10 @@ body {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
   background: var(--bg-surface);
+  z-index: 10;
   flex-shrink: 0;
   padding-right: var(--sp-md);
 }
