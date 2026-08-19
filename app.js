@@ -106,27 +106,43 @@ function _unlockAudio() {
   } catch(e) {}
 }
 
-// 2. 타이머 동작 중 iOS Web Audio 지속 신호 (30Hz, 0.003 gain)
+// 2. 타이머 동작 중 iOS Web Audio 지속 신호 (주파수 변조 + 0.01 gain)
 // - HTML5 <audio>나 MediaSession을 사용하지 않으므로 유튜브 뮤직/애플 뮤직이 절대 멈추지 않음!
-// - 0.003 gain(-50dB)은 사람이 들을 수 없지만 WebKit의 Silence Pruning(무음 감지 자동 절전)을 완벽 차단!
+// - 0.01 gain(-40dB)은 사람이 들을 수 없지만 WebKit Silence Pruning을 확실히 차단
+let _bgKeeperModInterval = null;
+
 function _startBgAudioKeeper() {
   try {
     const ctx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!_audioCtx) _audioCtx = ctx;
     if (ctx.state === 'suspended') ctx.resume();
     if (!_silentWebAudioNode) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
-      gain.gain.value = 0.003; // 사람이 들을 수 없는 극소 볼륨 (WebKit 무음 절전모드 방지 임계값 이상)
-      osc.frequency.value = 30; // 30Hz 초저역 주파수
+      gain.gain.value = 0.01; // ★ 0.003→0.01: Silence Pruning 방지 강화 (-40dB, 여전히 사람에게 들리지 않음)
+      osc.frequency.value = 30;
       osc.connect(gain); gain.connect(ctx.destination);
       osc.start();
       _silentWebAudioNode = { osc, gain };
+    }
+    // ★ 주파수 변조: iOS의 단일 주파수 무음 감지를 회피하기 위해 10초마다 30Hz↔50Hz 교치 전환
+    if (!_bgKeeperModInterval) {
+      let toggle = false;
+      _bgKeeperModInterval = setInterval(() => {
+        try {
+          if (_silentWebAudioNode) {
+            toggle = !toggle;
+            _silentWebAudioNode.osc.frequency.value = toggle ? 50 : 30;
+          }
+        } catch(e) {}
+      }, 10000);
     }
   } catch(e) {}
 }
 
 function _stopBgAudioKeeper() {
   try {
+    if (_bgKeeperModInterval) { clearInterval(_bgKeeperModInterval); _bgKeeperModInterval = null; }
     if (_silentWebAudioNode) {
       _silentWebAudioNode.osc.stop();
       _silentWebAudioNode.osc.disconnect();
@@ -399,10 +415,23 @@ function _playCountdownBeep() {
 
 // 화면이 다시 켜질 때(visibilitychange) → 경과 시간 재계산 + Wake Lock 재요청
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
   if (_timerState !== 'active') return;
+  
+  // ★ hidden 상태로 전환될 때: AudioContext resume 시도 (예약된 알람이 재생되도록)
+  if (document.visibilityState === 'hidden') {
+    try {
+      if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
+    } catch(e) {}
+    return;
+  }
+  
+  // visible 상태로 복귀
   // Wake Lock은 화면 꺼지면 자동 해제되므로 다시 켜질 때 재요청
   if (!_wakeLock) _requestWakeLock();
+  // AudioContext 재개 + bg keeper 재시작
+  try {
+    if (_audioCtx && _audioCtx.state === 'suspended') _audioCtx.resume();
+  } catch(e) {}
   _startBgAudioKeeper();
   const dur = (() => {
     try { const s = parseInt(localStorage.getItem('_restDurSnapshot')); return (s > 0) ? s : _getCustomDuration(); } catch(e) { return _getCustomDuration(); }
@@ -412,6 +441,8 @@ document.addEventListener('visibilitychange', () => {
   if (_timerSeconds <= 0) {
     _triggerAlarm();
   } else {
+    // ★ 남은 시간에 맞춰 백그라운드 알람 재예약 (기존 예약이 만료되었을 수 있음)
+    _scheduleBackgroundAlarm(_timerSeconds);
     _syncTimerDOM();
   }
 });
