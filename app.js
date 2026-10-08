@@ -476,107 +476,121 @@ try {
 } catch(e) {}
 
 
-// ===== 요일별 운동 안내 (표 기반) =====
+// ===== 🥋 주짓수 강화 100일 챌린지 (2026.10.12 ~ 2027.02.27) =====
+const CHALLENGE_START = new Date(2026, 9, 12); // 2026-10-12 월요일
+const CHALLENGE_TOTAL_DAYS = 100; // 운동일 100일 (토·일 제외)
+
+// 오늘이 챌린지 몇일차인지 계산 (토·일 제외, 시작 전이면 0, 종료 후면 101+)
+function getChallengeDay(date) {
+  const d = new Date(date); d.setHours(0,0,0,0);
+  const start = new Date(CHALLENGE_START); start.setHours(0,0,0,0);
+  if (d < start) return 0;
+  let count = 0;
+  const cursor = new Date(start);
+  while (cursor <= d) {
+    const dow = cursor.getDay();
+    if (dow !== 0 && dow !== 6) count++; // 토·일 제외
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+// 요일별 운동 안내 (주짓수 연결 - 점심 1시간용)
 const DAILY_GUIDE = {
-  // 아침 공통
   morning: {
-    title: '🌅 아침 맨몸운동',
+    title: '🌅 아침 스트레칭',
     items: [
-      '맨몸스쿼트 3~5세트 (세트 간 60~90초 휴식)',
-      '너무 쉬우면 천천히 내려가기 + 아래서 1초 정지',
+      '가벼운 관절 돌리기 및 스트레칭',
     ]
   },
-  // 점심 공통
   lunch: {
-    title: '☀️ 점심 활동',
+    title: '☀️ 점심 1시간 주짓수 기구운동',
     items: [
-      '식사 후 10~15분 걷기 (혈당 상승 완화)',
-      '60~90분마다 2~3분 일어나서 움직이기 (혈당·피로 관리)',
+      '환복/샤워 포함 1시간 내 완료 (실 운동시간 35~40분)',
+      '휴식시간 60~90초 철저히 지키기 (타이머 필수)',
     ]
   },
-  // 퇴근 후 — 요일별 (0=일,1=월,...,6=토)
   after: {
-    1: { title: '월 — 상체 푸시', desc: '상체 푸시 기구운동 + 푸시업 2~3세트 마무리', purpose: '근성장' },
-    2: { title: '화 — 회복', desc: '걷기 20~30분 + 스트레칭', purpose: '회복 및 혈당 관리' },
-    3: { title: '수 — 하체', desc: '하체 기구운동 + 가벼운 유산소 10~15분', purpose: '근성장 + 대사활동' },
-    4: { title: '목 — 회복', desc: '스트레칭 + 가벼운 걷기', purpose: '회복' },
-    5: { title: '금 — 상체 풀', desc: '상체 풀 기구운동 + 푸시업 2세트 마무리', purpose: '근성장' },
-    6: { title: '토 — BJJ / 유산소', desc: 'BJJ 또는 가벼운 유산소 / 피로 시 휴식', purpose: '컨디션 조절' },
-    0: { title: '일 — 완전 휴식', desc: '완전 휴식 또는 산책', purpose: '회복' },
+    1: { title: '월 — 🥋 그래플링 파워', desc: '풀 + 그립: 테이크다운·클린치 강화 (점심 완료)', purpose: '당기는 힘' },
+    2: { title: '화 — 🦵 가드 & 스위프', desc: '하체 + 힙: 가드 리텐션·스위프 강화 (점심 완료)', purpose: '힙 파워' },
+    3: { title: '수 — 💪 백컨트롤 & 초크', desc: '푸시 + 어깨: 마운트 유지·프레임 강화 (점심 완료)', purpose: '밀어내는 힘' },
+    4: { title: '목 — 🔥 코어 & 컨디셔닝', desc: '코어 안정성 + 지구력 (점심 완료)', purpose: '지구력·회복' },
+    5: { title: '금 — ⚡ 종합 파워', desc: '전신 컴파운드: 폭발력·스크램블 강화 (점심 완료)', purpose: '전신 폭발력' },
+    6: { title: '토 — 완전 휴식', desc: '완전 휴식 또는 가벼운 산책', purpose: '회복' },
+    0: { title: '일 — 완전 휴식', desc: '완전 휴식 또는 가벼운 산책', purpose: '회복' },
   }
 };
 
 // ===== 운동 정의 =====
-// ─ 근비대 3대 운동(스쿼트·데드리프트·벤치프레스) 중심 설계 ─
-// 매일 하는 맨몸운동 (항상 표시)
+// ─ 주짓수 퍼포먼스 강화를 위한 기능적 기구운동 (점심 1시간용) ─
+// 매일 하는 맨몸운동 (시간 절약을 위해 웜업 1종목으로 축소)
 const DAILY_EXERCISES_GROUP = {
-  id: 'daily', name: '매일 맨몸운동', icon: '🌅', color: '#4ade80',
+  id: 'daily', name: '점심 웜업', icon: '🌅', color: '#4ade80',
   alwaysShow: true,
   exercises: [
-    { id: 'bw_squat',  name: '맨몸 스쿼트',  defaultWeight: 0, defaultSets: 5 },
-    { id: 'push_up',   name: '푸시업 (맨몸)', defaultWeight: 0, defaultSets: 3 },
+    { id: 'bw_squat',  name: '맨몸 스쿼트',  defaultWeight: 0, defaultSets: 3 },
   ]
 };
 
 // 요일별 기구 운동 그룹 (0=일,1=월,...,6=토)
-// ┌ 월: 벤치프레스 중심 — 가슴·삼두
-// ├ 화: 회복
-// ├ 수: 스쿼트·데드리프트 중심 — 하체·전신
-// ├ 목: 회복
-// ├ 금: 데드리프트 변형·등 — 상체 풀
-// ├ 토: 보조 운동 or 유산소
-// └ 일: 완전 휴식
+// ※ 1시간 제한을 위해 하루 핵심 4종목으로 압축 (종목당 3~4세트 권장)
 const DOW_WORKOUT_PLAN = {
-  1: [ // 월 — 가슴 / 삼두 (벤치프레스 중심)
+  1: [ // 월 — 🥋 그래플링 파워 (풀 + 그립)
     {
-      id: 'chest_push', name: '가슴 · 삼두', icon: '🏋️', color: '#6c8eff',
+      id: 'bjj_pull', name: '그래플링 파워', icon: '🥋', color: '#ef4444',
       exercises: [
-        { id: 'bench_press',      name: '바벨 벤치프레스',       defaultWeight: 60 },
-        { id: 'incline_bench',    name: '인클라인 벤치프레스',    defaultWeight: 50 },
-        { id: 'pec_fly',          name: '펙덱 플라이',            defaultWeight: 20 },
-        { id: 'tricep_pushdown',  name: '트라이셉 푸시다운',      defaultWeight: 15 },
-        { id: 'overhead_press',   name: '오버헤드 프레스 (숄더)', defaultWeight: 40 },
+        { id: 'lat_pulldown',   name: '랫 풀다운',         defaultWeight: 45 },
+        { id: 'barbell_row',    name: '바벨 벤트오버 로우', defaultWeight: 50 },
+        { id: 'seated_row',     name: '시티드 케이블 로우', defaultWeight: 40 },
+        { id: 'face_pull',      name: '페이스 풀',         defaultWeight: 15 },
       ]
     }
   ],
-  2: [], // 화 — 회복
-  3: [ // 수 — 하체 (스쿼트 · 데드리프트 중심)
+  2: [ // 화 — 🦵 가드 & 스위프 (하체 + 힙)
     {
-      id: 'legs_big', name: '하체 · 전신', icon: '🦵', color: '#4ade80',
+      id: 'bjj_legs', name: '가드 & 스위프', icon: '🦵', color: '#22c55e',
       exercises: [
-        { id: 'barbell_squat',  name: '바벨 스쿼트',      defaultWeight: 80  },
-        { id: 'romanian_dl',    name: '루마니안 데드리프트', defaultWeight: 80  },
-        { id: 'leg_press',      name: '레그프레스',        defaultWeight: 100 },
-        { id: 'leg_curl',       name: '레그 컬',           defaultWeight: 30  },
-        { id: 'leg_ext',        name: '레그 익스텐션',     defaultWeight: 30  },
+        { id: 'leg_press',      name: '레그프레스',         defaultWeight: 100 },
+        { id: 'romanian_dl',    name: '루마니안 데드리프트', defaultWeight: 60 },
+        { id: 'hip_adduction',  name: '힙 어덕션 머신',     defaultWeight: 30 },
+        { id: 'leg_curl',       name: '레그 컬',            defaultWeight: 30 },
       ]
     }
   ],
-  4: [], // 목 — 회복
-  5: [ // 금 — 등 / 이두 (데드리프트 · 풀 중심)
+  3: [ // 수 — 💪 백컨트롤 & 초크 (푸시 + 어깨)
     {
-      id: 'back_pull', name: '등 · 이두', icon: '🦾', color: '#c084fc',
+      id: 'bjj_push', name: '백컨트롤 & 초크', icon: '💪', color: '#3b82f6',
       exercises: [
-        { id: 'deadlift',       name: '바벨 데드리프트',   defaultWeight: 100 },
-        { id: 'barbell_row',    name: '바벨 벤트오버 로우', defaultWeight: 60  },
-        { id: 'lat_pulldown',   name: '랫 풀다운',         defaultWeight: 50  },
-        { id: 'seated_row',     name: '시티드 케이블 로우', defaultWeight: 40  },
-        { id: 'barbell_curl',   name: '바벨 컬',           defaultWeight: 30  },
+        { id: 'chest_press_m',    name: '체스트 프레스 머신',  defaultWeight: 50 },
+        { id: 'shoulder_press_m', name: '숄더 프레스 머신',    defaultWeight: 30 },
+        { id: 'cable_crossover',  name: '케이블 크로스오버',   defaultWeight: 15 },
+        { id: 'tricep_pushdown',  name: '트라이셉 푸시다운',   defaultWeight: 15 },
       ]
     }
   ],
-  6: [ // 토 — 보조 운동 (어깨 · 팔 · 코어)
+  4: [ // 목 — 🔥 코어 & 컨디셔닝
     {
-      id: 'aux_sat', name: '어깨 · 팔 · 코어', icon: '💪', color: '#fb923c',
+      id: 'bjj_core', name: '코어 & 컨디셔닝', icon: '🔥', color: '#eab308',
       exercises: [
-        { id: 'shoulder_press_db', name: '덤벨 숄더프레스',  defaultWeight: 12 },
-        { id: 'lateral_raise',     name: '레터럴 레이즈',    defaultWeight: 8  },
-        { id: 'hammer_curl',       name: '해머 컬',          defaultWeight: 10 },
-        { id: 'face_pull',         name: '페이스 풀',        defaultWeight: 15 },
-        { id: 'plank',             name: '플랭크 (초)',       defaultWeight: 0  },
+        { id: 'cable_woodchop',   name: '케이블 우드촙',       defaultWeight: 15 },
+        { id: 'pallof_press',     name: '케이블 팔로프 프레스', defaultWeight: 10 },
+        { id: 'air_bike',         name: '에어 바이크 (분)',     defaultWeight: 0  },
+        { id: 'stretching',       name: '스트레칭 (분)',        defaultWeight: 0  },
       ]
     }
   ],
+  5: [ // 금 — ⚡ 종합 파워 (전신 컴파운드)
+    {
+      id: 'bjj_power', name: '종합 파워', icon: '⚡', color: '#a855f7',
+      exercises: [
+        { id: 'deadlift',        name: '바벨 데드리프트',      defaultWeight: 80 },
+        { id: 'db_lunge',        name: '덤벨 런지',            defaultWeight: 12 },
+        { id: 'lat_pulldown_w',  name: '랫 풀다운 (와이드)',   defaultWeight: 45 },
+        { id: 'cable_rotation',  name: '케이블 로테이션',      defaultWeight: 15 },
+      ]
+    }
+  ],
+  6: [], // 토 — 완전 휴식
   0: [], // 일 — 완전 휴식
 };
 
@@ -1043,6 +1057,24 @@ function renderTimetable(timetable) {
 function renderWorkout(workoutData) {
   const body = document.getElementById('workoutBody');
   body.innerHTML = '';
+
+  // ── 100일 챌린지 타이틀 업데이트 ──
+  const challengeDay = getChallengeDay(currentDate);
+  let challengeText = '';
+  if (challengeDay > 0 && challengeDay <= CHALLENGE_TOTAL_DAYS) {
+    challengeText = `<span style="color:#ef4444; margin-left:8px; font-weight:bold;">🔥 Day ${challengeDay} / ${CHALLENGE_TOTAL_DAYS}</span>`;
+  } else if (challengeDay > CHALLENGE_TOTAL_DAYS) {
+    challengeText = `<span style="color:#ef4444; margin-left:8px; font-weight:bold;">🎉 챌린지 완료!</span>`;
+  }
+  const sectionTitle = document.querySelector('.section-workout .section-title');
+  if (sectionTitle) {
+    sectionTitle.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M6.5 6.5h11M6.5 17.5h11M4 12h16M2 9l2 3-2 3M22 9l-2 3 2 3"/>
+      </svg>
+      점심 주짓수 챌린지 ${challengeText}
+    `;
+  }
 
   const w = workoutData || defaultWorkout();
   const meds = w.meds || { bp: false, glucose: false, supp1: false, supp2: false };

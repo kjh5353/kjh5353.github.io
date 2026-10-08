@@ -1,4 +1,4 @@
-const CACHE = 'daily-planner-v14';
+const CACHE = 'daily-planner-v15';
 const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
 
 self.addEventListener('install', e => {
