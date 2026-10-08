@@ -1269,7 +1269,11 @@ function renderWorkout(workoutData) {
       const nameBlock = document.createElement('div');
       nameBlock.className = 'ex-name-block';
       nameBlock.innerHTML = `
-        <span class="ex-name">${exCfg.name}</span>
+        <span class="ex-name">
+          <a href="https://www.youtube.com/results?search_query=${encodeURIComponent('플랜핏 ' + exCfg.name)}" target="_blank" title="플랜핏 동영상 보기">
+            ${exCfg.name} <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.4; margin-left:2px; margin-top:-2px;"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14L21 3"/></svg>
+          </a>
+        </span>
         ${lastRecordHtml}`;
 
       // 체크박스 행 (5세트) — 클릭 시 타이머 자동 시작

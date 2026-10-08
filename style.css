@@ -1797,6 +1797,18 @@ body {
   white-space: nowrap;
 }
 
+.ex-name a {
+  color: inherit;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+
+.ex-name a:hover {
+  color: var(--accent);
+}
+
 .ex-last-record {
   font-size: 0.65rem;
   color: var(--text-muted);
