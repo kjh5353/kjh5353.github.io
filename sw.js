@@ -1,5 +1,5 @@
-const CACHE = 'daily-planner-v16';
-const ASSETS = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json'];
+const CACHE = 'daily-planner-v17';
+const ASSETS = ['/', '/index.html', '/style.css?v=17', '/app.js?v=17', '/manifest.json'];
 
 self.addEventListener('install', e => {
   self.skipWaiting();
